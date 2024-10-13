@@ -8,8 +8,6 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "thread_pool.h"
-
 using json = nlohmann::json;
 
 class Checker {
@@ -46,20 +44,14 @@ public:
     }
 
     bool IsRegistered(size_t id) {
-        std::lock_guard<std::mutex> lock(mtx_);
-
         return predictions_.find(id) != predictions_.end();
     }
 
     void AddPrediction(size_t id, int num) {
-        std::lock_guard<std::mutex> lock(mtx_);
-
         predictions_[id].push_back(num);
     }
 
     std::string GetPredictions(size_t id) {
-        std::lock_guard<std::mutex> lock(mtx_);
-
         std::stringstream ss;
         for (int i : predictions_[id]) {
             ss << i << " ";
@@ -69,8 +61,6 @@ public:
     }
 
     void Flush(std::unordered_map<size_t, std::vector<int>>* predictions) {
-        std::lock_guard<std::mutex> lock(mtx_);
-
         for (const auto& [id, vect] : predictions_) {
             for (int i : vect) {
                 (*predictions)[id].push_back(i);
@@ -95,12 +85,7 @@ public:
     }
 
 private:
-
-    std::mutex mtx_;
     std::unordered_map<size_t, std::vector<int>> predictions_;
-
-    bool active_;
-
 };
 
 class HttpServer {
@@ -110,58 +95,6 @@ public:
         size_t Id;
         std::string Address;
     };
-
-    void RegisterUser(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([=]() mutable {
-            RegisterUser_(req, res);
-        });
-    }
-
-    void RegisterPrediction(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([=]() mutable {
-            RegisterPrediction_(req, res);
-        });
-    }
-
-    void GetPredictions(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([=]() mutable {
-            GetPredictions_(req, res);
-        });
-    }
-
-    void StartExperiment(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([=]() mutable {
-            StartExperiment_(req, res);
-        });
-    }
-
-    void StopExperiment(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([=]() mutable {
-            StopExperiment_(req, res);
-        });
-    }
-
-    void AnswerToUser(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([=]() mutable {
-            AnswerToUser_(req, res);
-        });
-    }
-
-    void GetWaiters(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([=]() mutable {
-            GetWaiters_(req, res);
-        });
-    }
-
-    void GetStat(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([=]() mutable {
-            GetStat_(req, res);
-        });
-    }
-    
-
-
-private:
 
     size_t Push(std::string address) {
         std::lock_guard<std::mutex> lock(mtx_);
@@ -176,7 +109,6 @@ private:
 
     void Start() {
         std::lock_guard<std::mutex> lock(mtx_);
-
         Experiment::Init();
 
         for (auto& user : users_) {
@@ -188,64 +120,69 @@ private:
     }
 
     void Stop() {
-        std::lock_guard<std::mutex> lock(mtx_);
-
         Experiment::Get()->Flush(&stat_);
         Experiment::Destoy();
     }
 
 
-    void RegisterUser_(const httplib::Request& req, httplib::Response& res) {
-        try {
-            auto it = req.headers.find("Host");
-            std::string domain;
-            if (it != req.headers.end()) {
-                domain = it->second;
-            }
-            auto requset = json::parse(req.body);
-
-            size_t id = Push(domain + ":" + std::string(requset["socket"]));
-
-            res.status = 200;
-            json response;
-            response["id"] = id;
-            res.set_content(response.dump(), "application/json");
-        } catch (std::exception&) {
-            res.status = 400;
+    void RegisterUser(const httplib::Request& req, httplib::Response& res) {
+        auto it = req.headers.find("Host");
+        std::string domain;
+        if (it != req.headers.end()) {
+            domain = it->second;
         }
-    }
-
-    void RegisterPrediction_(const httplib::Request& req, httplib::Response& res) {
-        json requset;
-        try {
-            requset = json::parse(req.body);
-        } catch (std::out_of_range&) {
+        json request;
+        try { 
+            request = json::parse(req.body);
+        } catch (json::exception&) {
             res.status = 400;
             return;
         }
 
-        int pred = requset["pred"];
-        size_t id = requset["id"];
+        size_t id = Push(domain + ":" + std::string(request["socket"]));
 
+        res.status = 200;
+        json response;
+        response["id"] = id;
+        res.set_content(response.dump(), "application/json");
+        
+    }
+
+    void RegisterPrediction(const httplib::Request& req, httplib::Response& res) {
+        json request;
+        try {
+            request = json::parse(req.body);
+        } catch (json::exception&) {
+            res.status = 400;
+            return;
+        }
+
+        int pred = request["pred"];
+        size_t id = request["id"];
+
+        std::lock_guard<std::mutex> lock(exp_mtx_);
         if (!Experiment::IsActive() || !Experiment::Get()->IsRegistered(id)) {
             res.status = 400;
             return;
         }
 
+        Experiment::Get()->AddPrediction(id, pred);
+
         res.status = 200;
     }
 
-    void GetPredictions_(const httplib::Request& req, httplib::Response& res) {
-        json requset;
+    void GetPredictions(const httplib::Request& req, httplib::Response& res) {
+        json request;
         try {
-            requset = json::parse(req.body);
-        } catch (std::out_of_range&) {
+            request = json::parse(req.body);
+        } catch (json::exception&) {
             res.status = 400;
             return;
         }
 
-        size_t id = requset["id"];
+        size_t id = request["id"];
 
+        std::lock_guard<std::mutex> lock(exp_mtx_);
         if (!Experiment::IsActive() || !Experiment::Get()->IsRegistered(id)) {
             res.status = 400;
             return;
@@ -257,22 +194,23 @@ private:
         res.set_content(response.dump(), "application/json");
     }
 
-    void StartExperiment_(const httplib::Request& req, httplib::Response& res) {
-        json requset;
+    void StartExperiment(const httplib::Request& req, httplib::Response& res) {
+        json request;
         try {
-            requset = json::parse(req.body);
-        } catch (std::out_of_range&) {
+            request = json::parse(req.body);
+        } catch (json::exception&) {
             res.status = 400;
             return;
         }
 
-        if (Experiment::IsActive()) {
-            res.status = 400;
-            return;
-        }
-
-        size_t secret = std::stoi(std::string(requset["secret"]));
+        size_t secret = std::stoi(std::string(request["secret"]));
         if (!checker_.CheckSecret(secret)) {
+            res.status = 400;
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(exp_mtx_);
+        if (Experiment::IsActive()) {
             res.status = 400;
             return;
         }
@@ -281,22 +219,23 @@ private:
         res.status = 200;
     }
 
-    void StopExperiment_(const httplib::Request& req, httplib::Response& res) {
-        json requset;
+    void StopExperiment(const httplib::Request& req, httplib::Response& res) {
+        json request;
         try {
-            requset = json::parse(req.body);
-        } catch (std::out_of_range&) {
+            request = json::parse(req.body);
+        } catch (json::exception&) {
             res.status = 400;
             return;
         }
 
-        if (!Experiment::IsActive()) {
-            res.status = 400;
-            return;
-        }
-
-        size_t secret = std::stoi(std::string(requset["secret"]));
+        size_t secret = std::stoi(std::string(request["secret"]));
         if (!checker_.CheckSecret(secret)) {
+            res.status = 400;
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(exp_mtx_);
+        if (!Experiment::IsActive()) {
             res.status = 400;
             return;
         }
@@ -305,59 +244,58 @@ private:
         res.status = 200;
     }
 
-    void AnswerToUser_(const httplib::Request& req, httplib::Response& res) {
-        json requset;
+    void AnswerToUser(const httplib::Request& req, httplib::Response& res) {
+        json request;
         try {
-            requset = json::parse(req.body);
-        } catch (std::out_of_range&) {
+            request = json::parse(req.body);
+        } catch (json::exception&) {
             res.status = 400;
             return;
         }
 
-        if (!Experiment::IsActive()) {
-            res.status = 400;
-            return;
-        }
-
-        size_t secret = std::stoi(std::string(requset["secret"]));
+        size_t secret = std::stoi(std::string(request["secret"]));
         if (!checker_.CheckSecret(secret)) {
             res.status = 400;
             return;
         }
 
-        size_t id = std::stoi(std::string(requset["id"]));
-        std::string ans = requset["answer"];
+        std::lock_guard<std::mutex> lock(exp_mtx_);
+        if (!Experiment::IsActive()) {
+            res.status = 400;
+            return;
+        }
 
-        std::lock_guard<std::mutex> lock(mtx_);
+        size_t id = std::stoi(std::string(request["id"]));
+        std::string ans = request["answer"];
+
         httplib::Client cli(users_[id].Address);
         auto _ = cli.Post("/notify", ans, "text/plain");
 
         res.status = 200;
     }
 
-    void GetWaiters_(const httplib::Request& req, httplib::Response& res) {
-        json requset;
+    void GetWaiters(const httplib::Request& req, httplib::Response& res) {
+        json request;
         try {
-            requset = json::parse(req.body);
-        } catch (std::out_of_range&) {
+            request = json::parse(req.body);
+        } catch (json::exception&) {
             res.status = 400;
             return;
         }
 
+        size_t secret = std::stoi(std::string(request["secret"]));
+        if (!checker_.CheckSecret(secret)) {
+            res.status = 400;
+            return;
+        }
+        
+        std::lock_guard<std::mutex> lock(exp_mtx_);
         if (!Experiment::IsActive()) {
             res.status = 400;
             return;
         }
 
-        size_t secret = std::stoi(std::string(requset["secret"]));
-        if (!checker_.CheckSecret(secret)) {
-            res.status = 400;
-            return;
-        }
-
         json response;
-
-        std::lock_guard<std::mutex> lock(mtx_);
         for (auto& user : users_) {
             if (Experiment::Get()->IsRegistered(user.Id)) {
                 response[std::to_string(user.Id)] = Experiment::Get()->GetPredictions(user.Id);
@@ -374,21 +312,22 @@ private:
         res.set_content(response.dump(), "application/json");
     }
 
-    void GetStat_(const httplib::Request& req, httplib::Response& res) {
-        json requset;
+    void GetStat(const httplib::Request& req, httplib::Response& res) {
+        json request;
         try {
-            requset = json::parse(req.body);
-        } catch (std::out_of_range&) {
+            request = json::parse(req.body);
+        } catch (json::exception&) {
             res.status = 400;
             return;
         }
-
+        
+        std::lock_guard<std::mutex> lock(exp_mtx_);
         if (!Experiment::IsActive()) {
             res.status = 400;
             return;
         }
 
-        size_t secret = std::stoi(std::string(requset["secret"]));
+        size_t secret = std::stoi(std::string(request["secret"]));
         if (!checker_.CheckSecret(secret)) {
             res.status = 400;
             return;
@@ -396,7 +335,6 @@ private:
 
         json response;
 
-        std::lock_guard<std::mutex> lock(mtx_);
         for (auto& user : users_) {
             if (Experiment::Get()->IsRegistered(user.Id)) {
                 response["Current"][std::to_string(user.Id)] = Experiment::Get()->GetPredictions(user.Id);
@@ -419,19 +357,17 @@ private:
 private:
 
     std::mutex mtx_;
+    std::mutex exp_mtx_;
     std::vector<User> users_;
-
-    std::unordered_map<size_t, std::vector<int>> predictions_;
-
-    ThreadPool pool_{4};
 
     Checker checker_;
 
     std::unordered_map<size_t, std::vector<int>> stat_;
 };
 
-int main() {
+int main(int argc, char* argv[]) {
     httplib::Server svr;
+    svr.new_task_queue = [=] { return new httplib::ThreadPool(std::atoi(argv[1]), std::atoi(argv[2])); };
 
     HttpServer server;
     svr.Post("/user/register", [&](const httplib::Request& req, httplib::Response& res) {

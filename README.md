@@ -21,13 +21,13 @@ application.cpp - код приложения на стороне пользов
 ## Запуск сервера:
 ```
 clang++ server.cpp -o server -std=c++11
-./server
+./server <num_of_threads> <max_queue_size>
 ```
 
 ## Запуск приложения:
 ```
 clang++ application.cpp -o app -std=c++11
-./app
+./app <socket> <server>
 ```
 
-## Управление пртложением осуществляется через терминал.
+## Управление приложением осуществляется через терминал.

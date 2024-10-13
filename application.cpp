@@ -8,8 +8,6 @@
 #include <mutex>
 #include <unordered_map>
 
-#include "thread_pool.h"
-
 using json = nlohmann::json;
 
 class User {
@@ -47,7 +45,7 @@ public:
 
                 json req;
                 req["id"] = std::to_string(Id_);
-                req["num"] = std::to_string(num);
+                req["pred"] = std::to_string(num);
                 auto res = cli.Post("/user/predict", req.dump(), "application/json");
                 if (res && res->status == 200) {
                     auto result = json::parse(res->body);
@@ -204,6 +202,7 @@ int main(int argc, char* argv[]) {
     }};
 
     std::string permission;
+    std::cout << "Input yours permission:\n";
     std::cin >> permission;
     
     if (permission == "User") {
@@ -213,6 +212,7 @@ int main(int argc, char* argv[]) {
 
     if (permission == "Admin") {
         std::string password;
+        std::cout << "Enter Password:\n";
         std::cin >> password;
 
         if (password == "banana") {
