@@ -118,43 +118,43 @@ public:
     }
 
     void RegisterPrediction(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([&, this](){
+        pool_.enqueue([=]() mutable {
             RegisterPrediction_(req, res);
         });
     }
 
     void GetPredictions(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([&, this](){
+        pool_.enqueue([=]() mutable {
             GetPredictions_(req, res);
         });
     }
 
     void StartExperiment(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([&, this](){
+        pool_.enqueue([=]() mutable {
             StartExperiment_(req, res);
         });
     }
 
     void StopExperiment(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([&, this](){
+        pool_.enqueue([=]() mutable {
             StopExperiment_(req, res);
         });
     }
 
     void AnswerToUser(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([&, this](){
+        pool_.enqueue([=]() mutable {
             AnswerToUser_(req, res);
         });
     }
 
     void GetWaiters(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([&, this](){
+        pool_.enqueue([=]() mutable {
             GetWaiters_(req, res);
         });
     }
 
     void GetStat(const httplib::Request& req, httplib::Response& res) {
-        pool_.enqueue([&, this](){
+        pool_.enqueue([=]() mutable {
             GetStat_(req, res);
         });
     }
