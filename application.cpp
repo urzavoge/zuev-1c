@@ -22,14 +22,14 @@ public:
                 httplib::Client cli(argv[2]);
 
                 json req;
-                req["socket"] = argv[1];
+                req["host"] = "localhost:" + std::string(argv[1]);
                 auto res = cli.Post("/user/register", req.dump(), "application/json");
                 if (res && res->status == 200) {
 
                     auto result = json::parse(res->body);
 
-                    Id_ = std::stoi(std::string(result["Id"]));
-                    std::cout << result["Id"] << '\n';
+                    Id_ = result["id"];
+                    std::cout << result["id"] << '\n';
                 } else {
                     std::cout << "Erorr\n";
                 }
@@ -44,11 +44,10 @@ public:
                 httplib::Client cli(argv[2]);
 
                 json req;
-                req["id"] = std::to_string(Id_);
-                req["pred"] = std::to_string(num);
+                req["id"] = Id_;
+                req["pred"] = num;
                 auto res = cli.Post("/user/predict", req.dump(), "application/json");
                 if (res && res->status == 200) {
-                    auto result = json::parse(res->body);
                     std::cout << "Ok\n";
                 } else {
                     std::cout << "Erorr\n";
@@ -60,7 +59,7 @@ public:
                 httplib::Client cli(argv[2]);
 
                 json req;
-                req["id"] = std::to_string(Id_);
+                req["id"] = Id_;
                 auto res = cli.Post("/user/predict", req.dump(), "application/json");
                 if (res && res->status == 200) {
                     auto result = json::parse(res->body);
@@ -90,7 +89,7 @@ public:
                 httplib::Client cli(argv[2]);
 
                 json req;
-                req["secret"] = std::to_string(generator.Get());
+                req["secret"] = generator.Get();
                 auto res = cli.Post("/admin/start", req.dump(), "application/json");
                 if (res && res->status == 200) {
                     std::cout << "Ok\n" << '\n';
@@ -105,7 +104,7 @@ public:
                 httplib::Client cli(argv[2]);
 
                 json req;
-                req["secret"] = std::to_string(generator.Get());
+                req["secret"] = generator.Get();
                 auto res = cli.Post("/admin/stop", req.dump(), "application/json");
                 if (res && res->status == 200) {
                     std::cout << "Ok\n" << '\n';
@@ -126,9 +125,9 @@ public:
                 httplib::Client cli(argv[2]);
 
                 json req;
-                req["id"] = std::to_string(id);
+                req["id"] = id;
                 req["answer"] = answer;
-                req["secret"] = std::to_string(generator.Get());
+                req["secret"] = generator.Get();
 
                 
                 auto res = cli.Post("/admin/answer", req.dump(), "application/json");
@@ -144,7 +143,7 @@ public:
                 httplib::Client cli(argv[2]);
 
                 json req;
-                req["secret"] = std::to_string(generator.Get());
+                req["secret"] = generator.Get();
 
                 auto res = cli.Post("/admin/get", req.dump(), "application/json");
                 if (res && res->status == 200) {
@@ -159,7 +158,7 @@ public:
                 httplib::Client cli(argv[2]);
 
                 json req;
-                req["secret"] = std::to_string(generator.Get());
+                req["secret"] = generator.Get();
 
                 auto res = cli.Post("/admin/stat", req.dump(), "application/json");
                 if (res && res->status == 200) {
@@ -194,7 +193,7 @@ int main(int argc, char* argv[]) {
     std::thread server{[=](){
         httplib::Server svr;
 
-        svr.Get("/notify", [&](const httplib::Request& req, httplib::Response& res) {
+        svr.Post("/notify", [&](const httplib::Request& req, httplib::Response& res) {
             std::cout << req.body << '\n';
         });
 

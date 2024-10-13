@@ -99,6 +99,8 @@ public:
     size_t Push(std::string address) {
         std::lock_guard<std::mutex> lock(mtx_);
 
+        std::cout << address << '\n';
+
         size_t id = users_.size();
         users_.push_back({
             .Id = id,
@@ -126,11 +128,6 @@ public:
 
 
     void RegisterUser(const httplib::Request& req, httplib::Response& res) {
-        auto it = req.headers.find("Host");
-        std::string domain;
-        if (it != req.headers.end()) {
-            domain = it->second;
-        }
         json request;
         try { 
             request = json::parse(req.body);
@@ -139,7 +136,7 @@ public:
             return;
         }
 
-        size_t id = Push(domain + ":" + std::string(request["socket"]));
+        size_t id = Push(request["host"]);
 
         res.status = 200;
         json response;
@@ -203,7 +200,7 @@ public:
             return;
         }
 
-        size_t secret = std::stoi(std::string(request["secret"]));
+        size_t secret = request["secret"];
         if (!checker_.CheckSecret(secret)) {
             res.status = 400;
             return;
@@ -228,7 +225,7 @@ public:
             return;
         }
 
-        size_t secret = std::stoi(std::string(request["secret"]));
+        size_t secret = request["secret"];
         if (!checker_.CheckSecret(secret)) {
             res.status = 400;
             return;
@@ -253,7 +250,7 @@ public:
             return;
         }
 
-        size_t secret = std::stoi(std::string(request["secret"]));
+        size_t secret = request["secret"];
         if (!checker_.CheckSecret(secret)) {
             res.status = 400;
             return;
@@ -265,7 +262,7 @@ public:
             return;
         }
 
-        size_t id = std::stoi(std::string(request["id"]));
+        size_t id = request["id"];
         std::string ans = request["answer"];
 
         httplib::Client cli(users_[id].Address);
@@ -283,7 +280,7 @@ public:
             return;
         }
 
-        size_t secret = std::stoi(std::string(request["secret"]));
+        size_t secret = request["secret"];
         if (!checker_.CheckSecret(secret)) {
             res.status = 400;
             return;
@@ -327,7 +324,7 @@ public:
             return;
         }
 
-        size_t secret = std::stoi(std::string(request["secret"]));
+        size_t secret = request["secret"];
         if (!checker_.CheckSecret(secret)) {
             res.status = 400;
             return;
@@ -378,7 +375,7 @@ int main(int argc, char* argv[]) {
         server.RegisterPrediction(req, res);
     });
 
-    svr.Get("/user/get", [&](const httplib::Request& req, httplib::Response& res) {
+    svr.Post("/user/get", [&](const httplib::Request& req, httplib::Response& res) {
         server.GetPredictions(req, res);
     });
 
@@ -387,18 +384,18 @@ int main(int argc, char* argv[]) {
     });
 
     svr.Post("/admin/stop", [&](const httplib::Request& req, httplib::Response& res) {
-        server.StartExperiment(req, res);
+        server.StopExperiment(req, res);
     });
 
     svr.Post("/admin/answer", [&](const httplib::Request& req, httplib::Response& res) {
         server.AnswerToUser(req, res);
     });
 
-    svr.Get("/admin/get", [&](const httplib::Request& req, httplib::Response& res) {
+    svr.Post("/admin/get", [&](const httplib::Request& req, httplib::Response& res) {
         server.GetWaiters(req, res);
     });
 
-    svr.Get("/admin/stat", [&](const httplib::Request& req, httplib::Response& res) {
+    svr.Post("/admin/stat", [&](const httplib::Request& req, httplib::Response& res) {
         server.GetStat(req, res);
     });
 
